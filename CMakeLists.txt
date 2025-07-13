@@ -19,7 +19,7 @@ add_custom_target(clangformat
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Форматирование ${PROJECT_NAME} с ${CLANG-FORMAT_PATH}"
 )
-# add_dependencies(crc32_crack clangformat)
+add_dependencies(crc32_crack clangformat)
 
 if (MSVC)
     target_compile_options(crc32_crack PUBLIC /W4)

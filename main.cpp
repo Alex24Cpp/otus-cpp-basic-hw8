@@ -3,22 +3,45 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <mutex>
 #include <thread>
 #include <vector>
 
 #include "CRC32.hpp"
 #include "IO.hpp"
 
+std::mutex m;
+
 /// @brief Переписывает последние 4 байта значением value
 void replaceLastFourBytes(std::vector<char> &data, uint32_t value) {
     std::copy_n(reinterpret_cast<const char *>(&value), 4, data.end() - 4);
 }
 
-void SearchCRC32(std::vector<char> &result, const uint32_t originalCrc32,
-                 bool &success) {
+/**
+ * @brief Функция вспомогательного потока подбора четырех байт
+ * для получения нового вектор с тем же CRC32
+ */
+void SearchCRC32(std::vector<char> result, const uint32_t originalCrc32,
+                 size_t &hackResults, bool &success, uint totalThreads,
+                 uint threadNumber) {
     const size_t maxVal = std::numeric_limits<uint32_t>::max();
-    size_t i = 0;
-    for (; i < maxVal; ++i) {
+    size_t t = maxVal / totalThreads;
+    size_t begin = (t + 1) * threadNumber;
+    size_t end = begin + t;
+    {
+        std::lock_guard lck(m);
+        std::cout << "Поток №" << threadNumber << " maxVal: " << maxVal
+                  << ", begin: " << begin << ", end: " << end << std::endl;
+    }
+    for (size_t i = begin; i < end; ++i) {
+        if (success) {
+            {
+                std::lock_guard lck(m);
+                std::cout << "Поток №" << threadNumber
+                          << " завершился после чужого успеха" << std::endl;
+            }
+            return;
+        }
         // Заменяем последние четыре байта на значение i
         replaceLastFourBytes(result, uint32_t(i));
         // Вычисляем CRC32 текущего вектора result
@@ -26,16 +49,24 @@ void SearchCRC32(std::vector<char> &result, const uint32_t originalCrc32,
 
         if (currentCrc32 == originalCrc32) {
             success = true;
-            std::cout << "Success! 4 bytes found: " << std::hex
-                      << std::uppercase << std::setw(8) << std::setfill('0')
-                      << i << "\n";
+            hackResults = i;
+            {
+                std::lock_guard lck(m);
+                std::cout << "Успех! найдено 4 байта: " << std::hex
+                          << std::uppercase << std::setw(8) << std::setfill('0')
+                          << i << ", поток №" << threadNumber << "\n";
+            }
             return;
         }
         // Отображаем прогресс
-        if (i % 1000 == 0) {
-            std::cout << "progress: "
-                      << static_cast<double>(i) / static_cast<double>(maxVal)
-                      << std::endl;
+        if (i % 100000000 == 0) {
+            {
+                std::lock_guard lck(m);
+                std::cout << "Поток №" << threadNumber << " progress: "
+                          << static_cast<double>(i - begin) /
+                                 static_cast<double>(maxVal / totalThreads)
+                          << std::endl;
+            }
         }
     }
 }
@@ -59,13 +90,23 @@ std::vector<char> hack(const std::vector<char> &original,
     auto it = std::copy(original.begin(), original.end(), result.begin());
     std::copy(injection.begin(), injection.end(), it);
 
+    uint totalThreads = std::thread::hardware_concurrency();
+    std::cout << "Всего потоков: " << totalThreads << std::endl;
+
+    size_t hackResults{0};
+    std::vector<std::thread> threads;
+    threads.reserve(totalThreads);
     bool success{false};
-    std::thread do1{SearchCRC32, std::ref(result), originalCrc32,
-                    std::ref(success)};
-    do1.join();
-    if (!success) {
-        throw std::logic_error("Can't hack");
+
+    for (uint i = 0; i < totalThreads; ++i) {
+        threads.emplace_back(std::thread{SearchCRC32, result, originalCrc32,
+                                         std::ref(hackResults),
+                                         std::ref(success), totalThreads, i});
     }
+    for (auto &t : threads) {
+        t.join();
+    }
+    replaceLastFourBytes(result, uint32_t(hackResults));
     return result;
 }
 
@@ -76,9 +117,7 @@ int main(int argc, char **argv) {
                      "file>\n";
         return 1;
     }
-
     std::chrono::time_point start = std::chrono::high_resolution_clock::now();
-
     try {
         const std::vector<char> data = readFromFile(argv[1]);
         const std::vector<char> badData = hack(data, "He-he-he");
