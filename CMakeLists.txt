@@ -9,6 +9,11 @@ add_executable(crc32_crack main.cpp
         IO.cpp
         IO.hpp)
 
+add_executable(exampleCrc exampleСRС32.cpp
+        CRC32.cpp
+        CRC32.hpp
+        )
+
 # clang-format
 find_program(CLANG-FORMAT_PATH NAMES clang-format REQUIRED)
 message(STATUS "Найден clang-format: ${CLANG-FORMAT_PATH}")
@@ -19,7 +24,8 @@ add_custom_target(clangformat
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Форматирование ${PROJECT_NAME} с ${CLANG-FORMAT_PATH}"
 )
-add_dependencies(crc32_crack clangformat)
+# add_dependencies(crc32_crack clangformat)
+# add_dependencies(exampleCrc clangformat)
 
 if (MSVC)
     target_compile_options(crc32_crack PUBLIC /W4)
