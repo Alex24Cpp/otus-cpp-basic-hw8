@@ -9,8 +9,9 @@
 
 #include "CRC32.hpp"
 #include "IO.hpp"
+#include "test_hash.hpp"
 
-std::mutex m;
+// inline std::mutex m;
 
 /// @brief Переписывает последние 4 байта значением value
 void replaceLastFourBytes(std::vector<char> &data, uint32_t value) {
@@ -86,11 +87,13 @@ std::vector<char> hack(const std::vector<char> &original,
                        const std::string &injection) {
     const uint32_t originalCrc32 = crc32(original.data(), original.size());
 
+    uint totalThreads = TestHash<u_int16_t>();
+
     std::vector<char> result(original.size() + injection.size() + 4);
     auto it = std::copy(original.begin(), original.end(), result.begin());
     std::copy(injection.begin(), injection.end(), it);
 
-    uint totalThreads = std::thread::hardware_concurrency();
+    // uint totalThreads = std::thread::hardware_concurrency();
     std::cout << "Всего потоков: " << totalThreads << std::endl;
 
     size_t hackResults{0};
